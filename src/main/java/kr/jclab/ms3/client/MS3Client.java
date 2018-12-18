@@ -116,7 +116,7 @@ public class MS3Client implements AmazonS3 {
                 InputStream inputStream = httpResponse.getEntity().getContent();
                 GenerateUriDTO.Response responseBody = objectMapper.readValue(inputStream, GenerateUriDTO.Response.class);
                 String uri = responseBody.uri;
-                return new URL(uri);
+                return new URL(new URL(m_serverUrl), uri);
             }
         } catch (IOException e) {
             e.printStackTrace();
