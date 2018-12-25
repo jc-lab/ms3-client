@@ -51,14 +51,27 @@ import java.util.List;
 
 import static com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES;
 
-/**
- * <p>
- *     Amazon S3의 AmazonS3 클래스와 호환되는 MS3Client구현입니다.
- * </p>
+/*
+ * Diary in source #DI2S-JICHAN #20181225
+ *
+ * Oh holy night~ Merry christmas!
+ *
+ * 2018여년 전 예수님이 우리를 이해하시기 위해
+ * 이 땅에서 가장 낮은 곳, 목수의 아들로, 마구간의 말 구유 속에서,
+ * 땀과 먼지로 얼룩진 목자들과, 이방인이었던 동방박사들의 환영을 받으며,
+ * 어린시절부터 청년을 지나 인간의 삶을 경험하시러 이 땅가운데 오셨습니다.
+ *
+ * 우리를 이해하시고 위로하시러, 그리고 우리를 구원하시러 온 예수님께 감사하고
+ * 생신 축하 드립니다 :)
  */
 
+/**
+ * Amazon S3의 AmazonS3 클래스와 호환되는 MS3Client구현입니다.
+ */
 @ThreadSafe
 public class MS3Client implements AmazonS3 {
+    private final String MediaType_JSON = "application/json";
+
     private Log log = null;
     private volatile AmazonS3Waiters waiters = null;
 
@@ -109,6 +122,7 @@ public class MS3Client implements AmazonS3 {
         HttpResponse httpResponse = null;
         try {
             int statusCode;
+            httpRequest.addHeader("Accept", MediaType_JSON);
             httpResponse = m_httpClient.execute(httpRequest);
             statusCode = httpResponse.getStatusLine().getStatusCode();
             if(statusCode >= 200 && statusCode < 400) {
@@ -138,6 +152,7 @@ public class MS3Client implements AmazonS3 {
         HttpResponse httpResponse = null;
         try {
             int statusCode;
+            httpRequest.addHeader("Accept", MediaType_JSON);
             httpResponse = m_httpClient.execute(httpRequest);
             statusCode = httpResponse.getStatusLine().getStatusCode();
             if(statusCode >= 200 && statusCode < 400) {
@@ -213,6 +228,7 @@ public class MS3Client implements AmazonS3 {
         HttpResponse httpResponse = null;
         try {
             int statusCode;
+            httpRequest.addHeader("Accept", MediaType_JSON);
             httpResponse = m_httpClient.execute(httpRequest);
             statusCode = httpResponse.getStatusLine().getStatusCode();
             if(statusCode >= 200 && statusCode < 400) {
@@ -242,6 +258,7 @@ public class MS3Client implements AmazonS3 {
         HttpResponse httpResponse = null;
         try {
             int statusCode;
+            httpRequest.addHeader("Accept", "*/*");
             httpResponse = m_httpClient.execute(httpRequest);
             statusCode = httpResponse.getStatusLine().getStatusCode();
             if(statusCode >= 200 && statusCode < 400) {
