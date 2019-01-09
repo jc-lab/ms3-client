@@ -13,16 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package kr.jclab.ms3.common.model;
+package kr.jclab.cloud.ms3.client;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
-
-import java.util.Map;
-
-public class ObjectMetadata extends com.amazonaws.services.s3.model.ObjectMetadata {
-    @JsonIgnore
-    @Override
-    public Map<String, Object> getRawMetadata() {
-        return super.getRawMetadata();
+public class NotImplementedException extends RuntimeException {
+    public NotImplementedException() {
+        super("Not implemented");
     }
 }

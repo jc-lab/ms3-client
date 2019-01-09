@@ -13,10 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package kr.jclab.ms3.common.dto;
+package kr.jclab.cloud.ms3.common.dto;
 
-public class GenerateUriDTO {
-    public static class Response extends ResultBase {
-        public String uri;
-    }
+public class ResultBase {
+    public int code;
 }

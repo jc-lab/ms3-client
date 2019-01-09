@@ -13,8 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package kr.jclab.ms3.common.dto;
+package kr.jclab.cloud.ms3.common.dto;
 
-public class ResultBase {
-    public int code;
+import java.util.ArrayList;
+import java.util.List;
+
+public class ListObjectsDTO {
+    public static class ObjectSummary {
+        public String bucketName;
+        public String key;
+        public Long size;
+        public Long lastModified;
+    }
+
+    public static class Response {
+        public List<ObjectSummary> list = new ArrayList<>();
+    }
 }

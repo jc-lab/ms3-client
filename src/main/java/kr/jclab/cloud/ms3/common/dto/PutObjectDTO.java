@@ -1,4 +1,4 @@
-package kr.jclab.ms3.common.dto;
+package kr.jclab.cloud.ms3.common.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 

@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package kr.jclab.ms3.client;
+package kr.jclab.cloud.ms3.client;
 
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.AmazonWebServiceRequest;
@@ -32,6 +32,7 @@ import com.amazonaws.services.s3.waiters.AmazonS3Waiters;
 import com.amazonaws.util.StringUtils;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import kr.jclab.cloud.ms3.common.dto.*;
 import kr.jclab.ms3.common.dto.*;
 import org.apache.commons.logging.Log;
 import org.apache.http.Header;
@@ -340,7 +341,7 @@ public class MS3Client implements AmazonS3 {
             throws SdkClientException, AmazonServiceException {
         HttpUriRequest httpRequest = new HttpGet(m_serverUrl + "api/bucket/metadata/" + getObjectMetadataRequest.getBucketName() + "/" + getObjectMetadataRequest.getKey());
         try {
-            ApiRequestContext<kr.jclab.ms3.common.model.ObjectMetadata> apiRequestContext = new ApiRequestContext(httpRequest, kr.jclab.ms3.common.model.ObjectMetadata.class);
+            ApiRequestContext<kr.jclab.cloud.ms3.common.model.ObjectMetadata> apiRequestContext = new ApiRequestContext(httpRequest, kr.jclab.cloud.ms3.common.model.ObjectMetadata.class);
             int statusCode = apiRequestSync(apiRequestContext);
             if(isHttpStatusSuccess(statusCode)) {
                 return apiRequestContext.responseBody;
@@ -384,7 +385,7 @@ public class MS3Client implements AmazonS3 {
                 s3Object.setBucketName(getObjectRequest.getBucketName());
                 s3Object.setKey(getObjectRequest.getKey());
                 if(metadataBin.length > 0) {
-                s3Object.setObjectMetadata(objectMapper.readValue(metadataBin, kr.jclab.ms3.common.model.ObjectMetadata.class));
+                s3Object.setObjectMetadata(objectMapper.readValue(metadataBin, kr.jclab.cloud.ms3.common.model.ObjectMetadata.class));
                 }
                 s3Object.setObjectContent(httpResponse.getEntity().getContent());
                 return s3Object;

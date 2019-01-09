@@ -13,20 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package kr.jclab.ms3.common.dto;
+package kr.jclab.cloud.ms3.common.model;
 
-import java.util.ArrayList;
-import java.util.List;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
-public class ListObjectsDTO {
-    public static class ObjectSummary {
-        public String bucketName;
-        public String key;
-        public Long size;
-        public Long lastModified;
-    }
+import java.util.Map;
 
-    public static class Response {
-        public List<ObjectSummary> list = new ArrayList<>();
+public class ObjectMetadata extends com.amazonaws.services.s3.model.ObjectMetadata {
+    @JsonIgnore
+    @Override
+    public Map<String, Object> getRawMetadata() {
+        return super.getRawMetadata();
     }
 }

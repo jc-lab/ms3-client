@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package kr.jclab.ms3.client;
+package kr.jclab.cloud.ms3.common.dto;
 
-public class NotImplementedException extends RuntimeException {
-    public NotImplementedException() {
-        super("Not implemented");
+public class GenerateUriDTO {
+    public static class Response extends ResultBase {
+        public String uri;
     }
 }
