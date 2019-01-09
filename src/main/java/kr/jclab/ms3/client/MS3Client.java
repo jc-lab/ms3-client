@@ -30,22 +30,22 @@ import com.amazonaws.services.s3.model.inventory.InventoryConfiguration;
 import com.amazonaws.services.s3.model.metrics.MetricsConfiguration;
 import com.amazonaws.services.s3.waiters.AmazonS3Waiters;
 import com.amazonaws.util.StringUtils;
+import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import kr.jclab.ms3.common.dto.GenerateUriDTO;
-import kr.jclab.ms3.common.dto.ListObjectsDTO;
+import kr.jclab.ms3.common.dto.*;
 import org.apache.commons.logging.Log;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPut;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.client.utils.HttpClientUtils;
+import org.apache.http.entity.AbstractHttpEntity;
 
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
@@ -98,6 +98,18 @@ public class MS3Client implements AmazonS3 {
 
     // ================================================== Implementations ==================================================
 
+    private class ApiRequestContext<T> {
+        public HttpUriRequest httpRequest;
+        public HttpResponse httpResponse = null;
+        public T responseBody = null;
+        private Class<T> objectClass;
+
+        public ApiRequestContext(HttpUriRequest httpRequest, Class<T> objectClass) {
+            this.httpRequest = httpRequest;
+            this.objectClass = objectClass;
+        }
+    }
+
     @Override
     public AmazonS3Waiters waiters() {
         if (waiters == null) {
@@ -147,35 +159,137 @@ public class MS3Client implements AmazonS3 {
     public void shutdown() {
     }
 
-    boolean commonListObjects(List<S3ObjectSummary> objectSummaries, String bucket) {
-        HttpUriRequest httpRequest = new HttpGet(m_serverUrl + "api/bucket/" + bucket + "/list");
-        HttpResponse httpResponse = null;
+    private <T> int apiRequestSync(ApiRequestContext<T> context) throws IOException {
+        return apiRequestSync(context, true);
+    }
+
+    private <T> int apiRequestSync(ApiRequestContext<T> context, boolean closeHttpSession) throws IOException {
+        int statusCode = 0;
         try {
-            int statusCode;
-            httpRequest.addHeader("Accept", MediaType_JSON);
-            httpResponse = m_httpClient.execute(httpRequest);
-            statusCode = httpResponse.getStatusLine().getStatusCode();
+            context.httpRequest.addHeader("Accept", MediaType_JSON);
+            context.httpResponse = m_httpClient.execute(context.httpRequest);
+            statusCode = context.httpResponse.getStatusLine().getStatusCode();
             if(statusCode >= 200 && statusCode < 400) {
-                ObjectMapper objectMapper = new ObjectMapper();
-                Header encoding = httpResponse.getEntity().getContentEncoding();
-                String body = org.apache.commons.io.IOUtils.toString(httpResponse.getEntity().getContent(), encoding != null ? encoding.getValue() : "UTF-8");
-                ListObjectsDTO.Response responseBody = objectMapper.readValue(body, ListObjectsDTO.Response.class);
-                for(ListObjectsDTO.ObjectSummary item : responseBody.list) {
+                ObjectMapper objectMapper = new ObjectMapper().configure(FAIL_ON_UNKNOWN_PROPERTIES, false);
+                Header encoding = context.httpResponse.getEntity().getContentEncoding();
+                String body = org.apache.commons.io.IOUtils.toString(context.httpResponse.getEntity().getContent(), encoding != null ? encoding.getValue() : "UTF-8");
+                if(body != null && body.length() > 0) {
+                    context.responseBody = objectMapper.readValue(body, context.objectClass);
+                }
+            }
+        } catch (IOException e) {
+            throw e;
+        } finally {
+            if(closeHttpSession) {
+                HttpClientUtils.closeQuietly(context.httpResponse);
+            }
+        }
+        return statusCode;
+    }
+
+    private static boolean isHttpStatusSuccess(int statusCode) {
+        return statusCode >= 200 && statusCode < 400;
+    }
+
+    private ApiRequestContext<ListObjectsDTO.Response> commonListObjects(List<S3ObjectSummary> objectSummaries, String bucket) throws SdkClientException {
+        HttpUriRequest httpRequest = new HttpGet(m_serverUrl + "api/bucket/list/" + bucket);
+        try {
+            ApiRequestContext<ListObjectsDTO.Response> apiRequestContext = new ApiRequestContext(httpRequest, ListObjectsDTO.Response.class);
+            int statusCode = apiRequestSync(apiRequestContext);
+            if(isHttpStatusSuccess(statusCode)) {
+                for (ListObjectsDTO.ObjectSummary item : apiRequestContext.responseBody.list) {
                     S3ObjectSummary s3ObjectSummary = new S3ObjectSummary();
                     s3ObjectSummary.setBucketName(item.bucketName);
                     s3ObjectSummary.setKey(item.key);
                     s3ObjectSummary.setSize(item.size);
                     s3ObjectSummary.setLastModified(new Date(item.lastModified));
                     objectSummaries.add(s3ObjectSummary);
-                    return true;
                 }
             }
+            return apiRequestContext;
         } catch (IOException e) {
-            e.printStackTrace();
-        } finally {
-            HttpClientUtils.closeQuietly(httpResponse);
+            throw new SdkClientException(e);
         }
-        return false;
+    }
+
+    /**
+     *
+     * @return
+     * @throws SdkClientException
+     * @throws AmazonServiceException
+     */
+    @Override
+    public List<Bucket> listBuckets() throws SdkClientException,
+            AmazonServiceException {
+        return listBuckets(new ListBucketsRequest());
+    }
+
+    /**
+     * Main implementation
+     * @param listBucketsRequest
+     * @return
+     * @throws SdkClientException
+     * @throws AmazonServiceException
+     */
+    @Override
+    public List<Bucket> listBuckets(ListBucketsRequest listBucketsRequest)
+            throws SdkClientException, AmazonServiceException {
+        HttpUriRequest httpRequest = new HttpGet(m_serverUrl + "api/buckets/list");
+        HttpResponse httpResponse = null;
+        try {
+            ApiRequestContext<BucketsListDTO.Response> apiRequestContext = new ApiRequestContext(httpRequest, BucketsListDTO.Response.class);
+            int statusCode = apiRequestSync(apiRequestContext);
+            if(isHttpStatusSuccess(statusCode)) {
+                List<Bucket> bucketList = new ArrayList();
+                for (BucketsListDTO.BucketSummary bucketSummary : apiRequestContext.responseBody.list) {
+                    Bucket bucket = new Bucket(bucketSummary.bucketName);
+                    bucket.setCreationDate(new Date(bucketSummary.creationTime));
+                    bucketList.add(bucket);
+                }
+                return bucketList;
+            }
+
+            throw new SdkClientException("Error code: " + statusCode + " / " + apiRequestContext.responseBody);
+        } catch (IOException e) {
+            throw new SdkClientException(e);
+        }
+    }
+
+    /**
+     * Main implementation
+     * @param createBucketRequest
+     * @return
+     * @throws SdkClientException
+     * @throws AmazonServiceException
+     */
+    @Override
+    public Bucket createBucket(CreateBucketRequest createBucketRequest)
+            throws SdkClientException, AmazonServiceException {
+        HttpUriRequest httpRequest = new HttpPut(m_serverUrl + "api/buckets/create/" + createBucketRequest.getBucketName());
+        try {
+            ApiRequestContext<ResultBase> apiRequestContext = new ApiRequestContext(httpRequest, ResultBase.class);
+            int statusCode = apiRequestSync(apiRequestContext);
+            if(isHttpStatusSuccess(statusCode)) {
+                Bucket bucket = new Bucket(createBucketRequest.getBucketName());
+                return bucket;
+            }
+            throw new SdkClientException("Error code: " + statusCode + " / " + apiRequestContext.responseBody);
+        } catch (IOException e) {
+            throw new SdkClientException(e);
+        }
+        }
+
+    /**
+     *
+     * @param bucketName
+     * @return
+     * @throws SdkClientException
+     * @throws AmazonServiceException
+     */
+    @Override
+    public Bucket createBucket(String bucketName)
+            throws SdkClientException, AmazonServiceException {
+        return createBucket(new CreateBucketRequest(bucketName));
     }
 
     /**
@@ -225,23 +339,16 @@ public class MS3Client implements AmazonS3 {
     public ObjectMetadata getObjectMetadata(GetObjectMetadataRequest getObjectMetadataRequest)
             throws SdkClientException, AmazonServiceException {
         HttpUriRequest httpRequest = new HttpGet(m_serverUrl + "api/bucket/metadata/" + getObjectMetadataRequest.getBucketName() + "/" + getObjectMetadataRequest.getKey());
-        HttpResponse httpResponse = null;
         try {
-            int statusCode;
-            httpRequest.addHeader("Accept", MediaType_JSON);
-            httpResponse = m_httpClient.execute(httpRequest);
-            statusCode = httpResponse.getStatusLine().getStatusCode();
-            if(statusCode >= 200 && statusCode < 400) {
-                ObjectMapper objectMapper = new ObjectMapper();
-                kr.jclab.ms3.common.model.ObjectMetadata objectMetadata = objectMapper.readValue(httpResponse.getEntity().getContent(), kr.jclab.ms3.common.model.ObjectMetadata.class);
-                return objectMetadata;
+            ApiRequestContext<kr.jclab.ms3.common.model.ObjectMetadata> apiRequestContext = new ApiRequestContext(httpRequest, kr.jclab.ms3.common.model.ObjectMetadata.class);
+            int statusCode = apiRequestSync(apiRequestContext);
+            if(isHttpStatusSuccess(statusCode)) {
+                return apiRequestContext.responseBody;
             }
+            throw new SdkClientException("Error code: " + statusCode + " / " + apiRequestContext.responseBody);
         } catch (IOException e) {
-            e.printStackTrace();
-        } finally {
-            HttpClientUtils.closeQuietly(httpResponse);
+            throw new SdkClientException(e);
         }
-        return null;
     }
 
     /**
@@ -256,12 +363,14 @@ public class MS3Client implements AmazonS3 {
             throws SdkClientException, AmazonServiceException {
         HttpUriRequest httpRequest = new HttpGet(m_serverUrl + "api/bucket/object/" + getObjectRequest.getBucketName() + "/" + getObjectRequest.getKey());
         HttpResponse httpResponse = null;
+        boolean success = false;
         try {
             int statusCode;
             httpRequest.addHeader("Accept", "*/*");
             httpResponse = m_httpClient.execute(httpRequest);
             statusCode = httpResponse.getStatusLine().getStatusCode();
-            if(statusCode >= 200 && statusCode < 400) {
+            success = isHttpStatusSuccess(statusCode);
+            if(isHttpStatusSuccess(statusCode)) {
                 S3Object s3Object = new S3Object();
                 ObjectMapper objectMapper = new ObjectMapper().configure(FAIL_ON_UNKNOWN_PROPERTIES, false);
                 int metadataSize = Integer.parseInt(httpResponse.getFirstHeader("MS3-METADATA-SIZE").getValue());
@@ -274,15 +383,90 @@ public class MS3Client implements AmazonS3 {
                 }
                 s3Object.setBucketName(getObjectRequest.getBucketName());
                 s3Object.setKey(getObjectRequest.getKey());
+                if(metadataBin.length > 0) {
                 s3Object.setObjectMetadata(objectMapper.readValue(metadataBin, kr.jclab.ms3.common.model.ObjectMetadata.class));
+                }
                 s3Object.setObjectContent(httpResponse.getEntity().getContent());
                 return s3Object;
             }
+            throw new SdkClientException("Error code: " + statusCode);
         } catch (IOException e) {
-            e.printStackTrace();
+            throw new SdkClientException(e);
+        } finally {
+            if(!success)
+                HttpClientUtils.closeQuietly(httpResponse);
         }
+    }
+
+    @Override
+    public PutObjectResult putObject(PutObjectRequest putObjectRequest)
+            throws SdkClientException, AmazonServiceException {
+        PutObjectResult result = new PutObjectResult();
+        HttpPut httpRequest = new HttpPut(m_serverUrl + "api/bucket/object/" + putObjectRequest.getBucketName() + "/" + putObjectRequest.getKey());
+        HttpResponse httpResponse = null;
+        boolean success = false;
+        try {
+            ApiRequestContext<PutObjectDTO.Response> apiRequestContext = new ApiRequestContext(httpRequest, PutObjectDTO.Response.class);
+            ObjectMapper objectMapper = new ObjectMapper().configure(JsonGenerator.Feature.IGNORE_UNKNOWN, true);
+            int statusCode;
+            final byte[] metadataBin = (putObjectRequest.getMetadata() != null) ? objectMapper.writeValueAsBytes(putObjectRequest.getMetadata()) : null;
+            AbstractHttpEntity entity = new AbstractHttpEntity() {
+                public boolean isRepeatable() {
+                    return false;
+                }
+
+                public long getContentLength() {
+                    return -1;
+                }
+
+                public boolean isStreaming() {
+                    return true;
+                }
+
+                public InputStream getContent() throws IOException {
+                    // Should be implemented as well but is irrelevant for this case
+                    throw new UnsupportedOperationException();
+                }
+
+                @Override
+                public void writeTo(OutputStream outstream) throws IOException {
+                    int readlen;
+                    byte[] buffer = new byte[1048576];
+                    InputStream inputStream = putObjectRequest.getInputStream();
+                    if(metadataBin != null) {
+                        outstream.write(metadataBin);
+                    }
+                    try {
+                        if (inputStream == null) {
+                            inputStream = new FileInputStream(putObjectRequest.getFile());
+                        }
+                        while ((readlen = inputStream.read(buffer)) > 0) {
+                            outstream.write(buffer, 0, readlen);
+                        }
+                    } finally {
+                        if (inputStream != null) {
+                            try { inputStream.close(); } catch (IOException closee) { }
+                        }
+                    }
+                }
+            };
+            httpRequest.addHeader("Accept", MediaType_JSON);
+            httpRequest.setEntity(entity);
+            httpRequest.addHeader("MS3-METADATA-SIZE", Integer.toString((metadataBin != null) ? metadataBin.length : 0));
+            statusCode = apiRequestSync(apiRequestContext);
+            if(isHttpStatusSuccess(statusCode)) {
+                if(metadataBin != null) {
+                    result.setMetadata(putObjectRequest.getMetadata());
+                }
+                return result;
+        }
+            throw new SdkClientException("Error code: " + statusCode);
+        } catch (IOException e) {
+            throw new SdkClientException(e);
+        } finally {
+            if(!success)
         HttpClientUtils.closeQuietly(httpResponse);
-        return null;
+        }
     }
 
     //region Sub implementions
@@ -308,12 +492,6 @@ public class MS3Client implements AmazonS3 {
     public ListObjectsV2Result listObjectsV2(String bucketName, String prefix)
             throws SdkClientException, AmazonServiceException {
         return listObjectsV2(new ListObjectsV2Request().withBucketName(bucketName).withPrefix(prefix));
-    }
-
-    @Override
-    public PutObjectResult putObject(PutObjectRequest putObjectRequest)
-            throws SdkClientException, AmazonServiceException {
-        throw new NotImplementedException();
     }
 
     @Override
@@ -560,24 +738,6 @@ public class MS3Client implements AmazonS3 {
      * Not implemented
      */
     @Override
-    public List<Bucket> listBuckets() throws SdkClientException,
-            AmazonServiceException {
-        throw new NotImplementedException();
-    }
-
-    /**
-     * Not implemented
-     */
-    @Override
-    public List<Bucket> listBuckets(ListBucketsRequest listBucketsRequest)
-            throws SdkClientException, AmazonServiceException {
-        throw new NotImplementedException();
-    }
-
-    /**
-     * Not implemented
-     */
-    @Override
     public String getBucketLocation(String bucketName) throws SdkClientException,
             AmazonServiceException {
         throw new NotImplementedException();
@@ -588,24 +748,6 @@ public class MS3Client implements AmazonS3 {
      */
     @Override
     public String getBucketLocation(GetBucketLocationRequest getBucketLocationRequest)
-            throws SdkClientException, AmazonServiceException {
-        throw new NotImplementedException();
-    }
-
-    /**
-     * Not implemented
-     */
-    @Override
-    public Bucket createBucket(CreateBucketRequest createBucketRequest)
-            throws SdkClientException, AmazonServiceException {
-        throw new NotImplementedException();
-    }
-
-    /**
-     * Not implemented
-     */
-    @Override
-    public Bucket createBucket(String bucketName)
             throws SdkClientException, AmazonServiceException {
         throw new NotImplementedException();
     }
