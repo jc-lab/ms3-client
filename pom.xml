@@ -6,7 +6,7 @@
 
     <groupId>kr.jclab.cloud</groupId>
     <artifactId>ms3-client</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.2</version>
 
     <name>ms3-client</name>
     <description></description>
