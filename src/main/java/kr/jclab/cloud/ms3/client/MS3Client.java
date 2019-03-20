@@ -459,7 +459,7 @@ public class MS3Client implements AmazonS3 {
                     result.setMetadata(putObjectRequest.getMetadata());
                 }
                 return result;
-        }
+            }
             throw new SdkClientException("Error code: " + statusCode);
         } catch (IOException e) {
             throw new SdkClientException(e);
