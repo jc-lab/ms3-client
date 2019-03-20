@@ -22,6 +22,7 @@ import com.amazonaws.SdkClientException;
 import com.amazonaws.annotation.SdkInternalApi;
 import com.amazonaws.annotation.ThreadSafe;
 import com.amazonaws.services.s3.*;
+import com.amazonaws.services.s3.internal.AmazonS3ExceptionBuilder;
 import com.amazonaws.services.s3.internal.ServiceUtils;
 import com.amazonaws.services.s3.model.*;
 import com.amazonaws.services.s3.model.ObjectMetadata;
@@ -36,6 +37,7 @@ import kr.jclab.cloud.ms3.common.dto.*;
 import org.apache.commons.logging.Log;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPut;
@@ -206,10 +208,22 @@ public class MS3Client implements AmazonS3 {
                     objectSummaries.add(s3ObjectSummary);
                 }
             }
+            throwErrorResponse(statusCode);
             return apiRequestContext;
         } catch (IOException e) {
             throw new SdkClientException(e);
         }
+    }
+
+    private void throwErrorResponse(int statusCode) {
+        AmazonS3ExceptionBuilder exceptionBuilder = new AmazonS3ExceptionBuilder();
+        if(statusCode == HttpStatus.SC_NOT_FOUND) {
+            exceptionBuilder.setErrorMessage("object not found");
+        }else{
+            return ;
+        }
+        exceptionBuilder.setStatusCode(statusCode);
+        throw exceptionBuilder.build();
     }
 
     /**
@@ -248,6 +262,7 @@ public class MS3Client implements AmazonS3 {
                 }
                 return bucketList;
             }
+            throwErrorResponse(statusCode);
 
             throw new SdkClientException("Error code: " + statusCode + " / " + apiRequestContext.responseBody);
         } catch (IOException e) {
@@ -273,6 +288,8 @@ public class MS3Client implements AmazonS3 {
                 Bucket bucket = new Bucket(createBucketRequest.getBucketName());
                 return bucket;
             }
+            throwErrorResponse(statusCode);
+
             throw new SdkClientException("Error code: " + statusCode + " / " + apiRequestContext.responseBody);
         } catch (IOException e) {
             throw new SdkClientException(e);
@@ -345,6 +362,7 @@ public class MS3Client implements AmazonS3 {
             if(isHttpStatusSuccess(statusCode)) {
                 return apiRequestContext.responseBody;
             }
+            throwErrorResponse(statusCode);
             throw new SdkClientException("Error code: " + statusCode + " / " + apiRequestContext.responseBody);
         } catch (IOException e) {
             throw new SdkClientException(e);
@@ -389,6 +407,7 @@ public class MS3Client implements AmazonS3 {
                 s3Object.setObjectContent(httpResponse.getEntity().getContent());
                 return s3Object;
             }
+            throwErrorResponse(statusCode);
             throw new SdkClientException("Error code: " + statusCode);
         } catch (IOException e) {
             throw new SdkClientException(e);
@@ -460,6 +479,7 @@ public class MS3Client implements AmazonS3 {
                 }
                 return result;
             }
+            throwErrorResponse(statusCode);
             throw new SdkClientException("Error code: " + statusCode);
         } catch (IOException e) {
             throw new SdkClientException(e);
